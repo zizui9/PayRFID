@@ -1,0 +1,31 @@
+# Développement et tests sans matériel : le badge est simulé par un fichier.
+#   docker compose -f docker-compose.dev.yml up -d
+#   echo A1B2C3D4 > docker/badge.txt   # "pose" un badge sur le lecteur
+services:
+  db:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: rfid_paiement
+      MARIADB_USER: rfid_user
+      MARIADB_PASSWORD: dev
+    volumes:
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./docker/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect"]
+      interval: 3s
+      retries: 20
+  web:
+    build: ./docker
+    ports:
+      - "8090:80"
+    environment:
+      PAYRFID_DB_HOST: db
+      PAYRFID_DB_PASS: dev
+      PAYRFID_FAKE_BADGE_FILE: /var/www/html/rfid/docker/badge.txt
+    volumes:
+      - ./:/var/www/html/rfid
+    depends_on:
+      db:
+        condition: service_healthy
