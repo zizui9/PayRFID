@@ -1,0 +1,12 @@
+[Unit]
+Description=PayRFID - démarrage du terminal de paiement
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/payrfid/scripts/start-services.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

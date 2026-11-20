@@ -1,10 +1,38 @@
 <?php
-require_once 'config.php';requireLogin();
-$s=$db->prepare('SELECT * FROM users WHERE id=?');$s->execute([$_SESSION['user_id']]);$user=$s->fetch(PDO::FETCH_ASSOC);$_SESSION['role']=$user['role'];
-$page=$_GET['page']??($user['role']==='admin'?'dashboard':($user['role']==='commercant'?'paiement':'compte'));?>
+// ─────────────────────────────────────────────────────────────
+// Point d'entrée de l'application : authentification, contrôle d'accès
+// par rôles et routage vers les pages autorisées (liste blanche).
+// ─────────────────────────────────────────────────────────────
+require_once 'config.php';
+requireLogin();
+
+// On recharge l'utilisateur à chaque requête : un compte désactivé
+// ou dont le rôle change est pris en compte immédiatement.
+$s = $db->prepare('SELECT * FROM users WHERE id = ?');
+$s->execute([$_SESSION['user_id']]);
+$user = $s->fetch();
+if (!$user || !$user['actif']) { redirect('logout.php'); }
+$_SESSION['role'] = $user['role'];
+
+// Pages autorisées par rôle : la première est la page d'accueil du rôle.
+$MENUS = [
+    'admin'       => ['dashboard' => ['layout-dashboard', 'Tableau de bord'], 'users' => ['users', 'Utilisateurs'], 'crediter' => ['wallet', 'Créditer']],
+    'commercant'  => ['paiement' => ['credit-card', 'Encaisser'], 'tableau' => ['bar-chart-3', 'Tableau de bord'], 'historique' => ['receipt', 'Historique']],
+    'utilisateur' => ['compte' => ['user', 'Mon compte'], 'historique' => ['receipt', 'Historique']],
+];
+$menu = $MENUS[$user['role']];
+$page = $_GET['page'] ?? array_key_first($menu);
+if (!array_key_exists($page, $menu)) {
+    http_response_code(404);
+    $page = null;
+}
+
+// Tous les formulaires de l'application sont protégés contre le CSRF.
+if ($_SERVER['REQUEST_METHOD'] === 'POST') { verifyCsrf(); }
+?>
 <!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>PayRFID</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}body{font-family:'Outfit',sans-serif;background:#06080f;color:#e2e8f0;min-height:100vh}
 .topbar{display:flex;justify-content:space-between;align-items:center;padding:16px 32px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.06)}
@@ -50,20 +78,16 @@ td{padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.
 .type-credit{color:#6ee7b7;font-weight:600}.type-paiement{color:#fca5a5;font-weight:600}
 </style></head><body>
 <div class="topbar"><div class="tb">Pay<span>RFID</span></div><div class="tr">
-<span class="tu"><?=htmlspecialchars($user['prenom'].' '.$user['nom'])?></span>
-<span class="role"><?=$user['role']?></span>
+<span class="tu"><?= e($user['prenom'] . ' ' . $user['nom']) ?></span>
+<span class="role"><?= e($user['role']) ?></span>
 <a href="logout.php" class="lo"><i data-lucide="log-out" style="width:16px;height:16px"></i>Deconnexion</a></div></div>
 <div class="layout"><div class="sidebar">
-<?php if($user['role']==='admin'):?>
-<a href="?page=dashboard" class="<?=$page==='dashboard'?'active':''?>"><i data-lucide="layout-dashboard" style="width:18px;height:18px"></i><span>Tableau de bord</span></a>
-<a href="?page=users" class="<?=$page==='users'?'active':''?>"><i data-lucide="users" style="width:18px;height:18px"></i><span>Utilisateurs</span></a>
-<a href="?page=crediter" class="<?=$page==='crediter'?'active':''?>"><i data-lucide="wallet" style="width:18px;height:18px"></i><span>Crediter</span></a>
-<?php elseif($user['role']==='commercant'):?>
-<a href="?page=paiement" class="<?=$page==='paiement'?'active':''?>"><i data-lucide="credit-card" style="width:18px;height:18px"></i><span>Encaisser</span></a>
-<a href="?page=historique" class="<?=$page==='historique'?'active':''?>"><i data-lucide="receipt" style="width:18px;height:18px"></i><span>Historique</span></a>
-<?php else:?>
-<a href="?page=compte" class="<?=$page==='compte'?'active':''?>"><i data-lucide="user" style="width:18px;height:18px"></i><span>Mon compte</span></a>
-<a href="?page=historique" class="<?=$page==='historique'?'active':''?>"><i data-lucide="receipt" style="width:18px;height:18px"></i><span>Historique</span></a>
-<?php endif;?></div>
-<div class="content"><?php $f="pages/$page.php";if(file_exists($f))include $f;else echo'<div class="card"><h2>Page non trouvee</h2></div>';?></div>
+<?php foreach ($menu as $id => [$icon, $label]): ?>
+<a href="?page=<?= $id ?>" class="<?= $page === $id ? 'active' : '' ?>"><i data-lucide="<?= $icon ?>" style="width:18px;height:18px"></i><span><?= $label ?></span></a>
+<?php endforeach; ?>
+</div>
+<div class="content">
+<?= renderFlash() ?>
+<?php if ($page) { include __DIR__ . "/pages/$page.php"; } else { echo '<div class="card"><h2>Page non trouvée</h2></div>'; } ?>
+</div>
 </div><script>lucide.createIcons();</script></body></html>
